@@ -1,0 +1,351 @@
+
+
+This R code accompanies the manuscript "Shifts in predator behavior following climate induced disturbance on coral reefs" by Rotjan & Ray et al.
+the dataset can be downloaded from Figshare repository here: https://figshare.com/s/71a3e9133a2de60e96e3
+
+Load the dataset
+```{r}
+# the dataset can be downloaded from Figshare repository here: https://figshare.com/s/71a3e9133a2de60e96e3
+
+library(readr)
+bleaching_coralivory_data_take_2 <- read_csv("C:/Users/nray1/Dropbox/Bleaching Corralivory/Stats & Good Data Sheets/bleaching_coralivory_data - take 2.csv")
+View(bleaching_coralivory_data_take_2)
+
+bleach = bleaching_coralivory_data_take_2
+```
+
+Load required libraries
+```{r}
+library(ggplot2)
+library(lme4)
+library(pscl)
+library(dplyr)
+library(patchwork)
+library(emmeans)
+```
+
+
+Do parrotfish selectively avoid grazing bleached Orbicella corals?
+```{r}
+#load the dataset - sheet "grazing_observations_2019"
+library(readxl)
+bleaching_coralivory_data_proc_b_submission <- read_excel("C:/Users/nray1/Desktop/bleaching_coralivory_data - proc_b submission.xlsx", 
+    sheet = "grazing_observations_2019")
+View(bleaching_coralivory_data_proc_b_submission)
+
+#rename it "bleach"
+bleach = bleaching_coralivory_data_proc_b_submission
+
+#compare bites on grazed v. ungrazed corals
+#histogram first - do grazed and ungrazed incidences
+#make a new vector:
+bleached_scars = as.data.frame(bleach$scars_in_bleach)
+bleached_label = as.vector("Bleached")
+bleached_scars$condition = bleached_label
+names(bleached_scars)[names(bleached_scars) == "bleach$scars_in_bleach"] <- "number"
+bleached_scars
+
+unbleached_scars = as.data.frame(bleach$num_scars_unbleached)
+unbleached_label = as.vector("Unbleached")
+unbleached_scars$condition = unbleached_label
+names(unbleached_scars)[names(unbleached_scars) == "bleach$num_scars_unbleached"] <- "number"
+unbleached_scars
+
+type_hist_data = rbind(bleached_scars, unbleached_scars)
+
+#Try running a hurdle model to compare bites on blecahed/unbleached sections:
+bite.mod.hurdle <- hurdle(number ~ condition, data = type_hist_data)
+summary(bite.mod.hurdle)
+
+#make a figure of the average number of bites on bitten corals
+##make a new dataframe without zeros
+no_zeros <- filter(type_hist_data, number > 0)
+no_zeros
+
+no_zeros$condition = factor(no_zeros$condition, levels = c("Unbleached", "Bleached"))
+max(no_zeros$number)
+
+bites_comp = ggplot(no_zeros, aes(y = number, x = condition, fill = condition))+
+  geom_boxplot(outlier.shape = NA)+
+  theme_classic()+
+  geom_jitter(width = 0.2)+
+  theme(axis.text.x =  element_text(size = 10,colour = "black"),
+         axis.text.y =  element_text(size = 10,colour = "black"),
+         axis.title.y = element_text(size = 10, colour = "black"),
+         axis.title.x = element_blank())+
+  scale_fill_manual(values = c("#745900", "#f6f3c1"))+
+  labs(y = expression(paste("Scars on Grazed Sections")), 
+        x = "", color = "white")+
+  guides(fill = FALSE)+
+  scale_x_discrete(limits = c("Unbleached", "Bleached"))+
+  annotate("text", label = "p < 0.001", x = 2, y = 200, size = 3.528)+
+  scale_y_continuous(limits = c(0,250))
+
+bites_comp
+
+#################
+max(na.omit(type_hist_data$number))
+###figure out how to bin the data on the next two lines...
+
+zeros = filter(type_hist_data, number == 0)
+zeros
+
+bleach_zero = subset(zeros, condition == "Bleached")
+summary(bleach_zero)
+
+unbleach_zero = subset(zeros, condition == "Unbleached")
+summary(unbleach_zero)
+
+binomial_bites <- data.frame("Condition" = c("Bleached","Unbleached", "Bleached","Unbleached"),
+                "X-axis label" = c("0", "0", "1+", "1+"),
+                "Number" = c(143,113,13,58))
+binomial_bites$condition_number = paste(binomial_bites$Condition, binomial_bites$X.axis.label)
+binomial_bites
+
+##unstack the histogram and turn into just 0 and >=1 (with bars for bleach and unbleach)
+bitehist = ggplot(binomial_bites, aes(condition_number, Number, 
+                                      fill = condition_number), stat = "identity") +
+  geom_col(colour = "black")+
+  theme_classic()+
+  theme(axis.text.x =  element_text(size = 10,colour = "black"),
+         axis.text.y =  element_text(size = 10,colour = "black"),
+         axis.title.y = element_text(size = 10, colour = "black"),
+         axis.title.x = element_blank())+
+  scale_x_discrete(limits = c("Unbleached 0", "Bleached 0", "Unbleached 1+", "Bleached 1+"))+
+  scale_fill_manual(values = c("#f6f3c1", "#f6f3c1","#745900", "#745900"))+
+  labs(y = expression(paste("Number of Coral Sections")))+
+  guides(fill = FALSE)+
+  scale_y_continuous(limits = c(0,160))+
+  annotate("text", label = "p < 0.001", x = 4, y = 128, size = 3.528)+
+  annotate("text", label = "n = 113", x = 1, y = 7, size = 3.528)+
+  annotate("text", label = "n = 143", x = 2, y = 7, size = 3.528)+
+  annotate("text", label = "n = 58", x = 3, y = 7, size = 3.528)+
+  annotate("text", label = "n = 13", x = 4, y = 7, size = 3.528)
+
+bitehist
+
+bitehist_relab = 
+  bitehist + scale_x_discrete(labels=c("Unbleached 0" = "0 Scars",
+                                       "Bleached 0" = "0 Scars",
+                                       "Unbleached 1+" = "1+ Scars", 
+                                       "Bleached 1+" = "1+ Scars"),
+                              limits = c("Unbleached 0", "Bleached 0", 
+                                         "Unbleached 1+", "Bleached 1+"))
+bitehist_relab
+
+###now put the two figures together (this becomes Figure 3 in the manuscript)
+bite_bleach_plot = bitehist_relab + bites_comp +
+  plot_layout(ncol = 2, widths = c(1,1))+
+  plot_annotation(tag_levels = "A", tag_suffix = ".")& 
+  theme(plot.tag = element_text(size = 10))
+bite_bleach_plot
+
+ggsave(filename = "bleach_bites_hist_box.png", plot = bite_bleach_plot, width = 190, height = 100, units = "mm")
+```
+
+Does the severity of bleaching relate to the number of bite scars?
+```{r}
+#here, use the sheet "bites_bleach_score"
+library(readxl)
+bleaching_coralivory_data_proc_b_submission <- read_excel("C:/Users/nray1/Desktop/bleaching_coralivory_data - proc_b submission.xlsx", 
+    sheet = "bites_bleach_score")
+View(bleaching_coralivory_data_proc_b_submission)
+
+#rename the datasheet
+grazing_bleach_score = bleaching_coralivory_data_proc_b_submission
+
+#estimate a lm
+#first make the values into a factor
+grazing_bleach_score$bleaching_score = as.factor(grazing_bleach_score$bleaching_score)
+model1 = lm(bites_in_section ~ bleaching_score, data = grazing_bleach_score)
+summary(model1)
+
+#supplemental table 1
+lsmeans(model1, pairwise~bleaching_score)
+
+#manuscript figure 4
+graze_score = ggplot(grazing_bleach_score, aes(y = bites_in_section, x = bleaching_score, fill = bleaching_score))+
+  geom_boxplot(outlier.shape = NA)+
+  theme_classic()+
+  geom_jitter(width = 0.2)+
+  theme(axis.text.x =  element_text(size = 10,colour = "black"),
+         axis.text.y =  element_text(size = 10,colour = "black"),
+         axis.title.y = element_text(size = 10, colour = "black"),
+         axis.title.x = element_text(size = 10, colour = "black"))+
+  scale_fill_manual(values = c("#f6f3c1", "#f5e9bf", "#eed688", "#cfaf48", "#9c801f","#745900"))+
+  labs(y = expression(paste("Scars on Grazed Sections")), 
+        x = "Coral Bleaching Score")+
+  guides(fill = FALSE)+
+  scale_y_continuous(limits = c(0,250))+
+  scale_x_discrete(limits = c(1,2,3,4,5,6))+
+  annotate("text", x = 1, y = 10, label = "n.s.", size = 3.528, fontface = 'italic')+
+  annotate("text", x = 1, y = 250, label = "Bleached", size = 3.528, hjust = 0)+
+  annotate("text", x = 4, y = 250, label = "Unbleached", size = 3.528, hjust = 0)+
+  geom_hline(yintercept = 0)+
+  geom_vline(xintercept = 3.5, linetype = "dashed")
+graze_score
+
+ggsave(filename="bleach_score_bites.png", plot=graze_score, width = 100, height = 100, units = "mm")
+
+```
+
+
+Does coral surface area relate to number of bite marks or bleaching?
+```{r}
+#use the "bleach" dataset loaded previously
+
+#first, calculate the surface area using Knud Thomsen's formula (http://mathcentral.uregina.ca/QQ/database/QQ.09.07/h/paritosh1.html)
+p = 1.6075
+bleach$surface_area = 4*pi*((((bleach$length_cm^p*bleach$height_cm^p)+(bleach$length_cm^p*bleach$width_cm^p)+(bleach$width_cm^p*bleach$height_cm^p))/3)^(1/p))
+bleach$surface_area
+#divide by two, since only one side of the eliptical dome is available for grazing/bleaching
+bleach$surface_area = bleach$surface_area/2
+#then convert to m2 by dividing by 10000
+bleach$surface_area_m2 = bleach$surface_area/10000
+
+max(bleach$surface_area_m2)
+min(bleach$surface_area_m2)
+
+#test for relationship between grazing and area:
+#make a column of total scars per coral
+bleach$total_scars = bleach$num_scars_unbleached + bleach$scars_in_bleach
+scar_area = lm(bleach$total_scars ~ bleach$surface_area_m2)
+summary(scar_area)
+plot(bleach$total_scars ~ bleach$surface_area_m2)
+#p < 0.01, but R2 = 0.10
+
+#look at number of scars in bleach and unbleach as a function of surface area
+unbleach_scar_area = (lm(bleach$num_scars_unbleached ~ bleach$surface_area_m2))
+summary(unbleach_scar_area)
+#only describes 6% of variance for unbleached
+bleach_scar_area = (lm(bleach$scars_in_bleach ~ bleach$surface_area_m2))
+summary(bleach_scar_area)
+#nothing for bleached
+#pooling the total number of scars is best
+
+#does size predict bleaching susceptibility?
+summary(lm(bleach$percent_bleached ~ bleach$surface_area_m2))
+plot(bleach$percent_bleached ~ bleach$surface_area_m2)
+#no relationship
+#p = 0.667 r2 = 0
+
+#make a stacked plot
+size_scars = ggplot(data = bleach, aes(x = surface_area_m2, y = total_scars))+
+  geom_hline(yintercept = 0)+
+  geom_smooth(method = "lm", colour = "black", se = TRUE)+
+  geom_point(colour = "#745900")+
+  theme_classic()+
+  theme(axis.text.x =  element_blank(),
+         axis.text.y =  element_text(size = 10,colour = "black"),
+         axis.title.y = element_text(size = 10, colour = "black"),
+         axis.title.x = element_blank())+
+  labs(y = expression(paste("Number of Scars")))+
+  scale_y_continuous(limits = c(0, 250),breaks=c(0, 50, 100, 150, 200, 250))+
+  guides(fill = FALSE)+
+  annotate("text", label = "paste(italic(R)^2, \" = 0.10\")", x = 6, y = 250, size = 3.528, parse = TRUE, hjust = 0)+
+  annotate("text", x = 6, y = 220, label = "p < 0.001", size = 3.528, hjust = 0)
+size_scars
+
+size_bleaching = ggplot(data = bleach, aes(x = surface_area_m2, y = percent_bleached))+
+  geom_hline(yintercept = 0)+
+  #geom_smooth(method = "lm", colour = "black", se = FALSE)+
+  geom_point(colour = "#745900")+
+  theme_classic()+
+  theme(axis.text.x =  element_text(size = 10,colour = "black"),
+         axis.text.y =  element_text(size = 10,colour = "black"),
+         axis.title.y = element_text(size = 10, colour = "black"),
+         axis.title.x = element_text(size = 10,colour = "black"))+
+  labs(y = expression(paste("% of Colony Bleached")))+
+  labs(x = expression(paste("Colony Surface Area (m"^2*")")))+
+  scale_y_continuous(limits = c(0, 100),breaks=c(0, 20, 40, 60, 80, 100))+
+  guides(fill = FALSE)+
+  annotate("text", label = "paste(italic(R)^2, \" = 0.00\")", x = 6, y = 100, size = 3.528, parse = TRUE, hjust = 0)+
+  annotate("text", x = 6, y = 88, label = "p = 0.667", size = 3.528, hjust = 0)
+size_bleaching
+
+size_relation_plot = size_scars + size_bleaching +
+  plot_layout(ncol = 1)+
+  plot_annotation(tag_levels = "A", tag_suffix = ".")& 
+  theme(plot.tag = element_text(size = 10))
+size_relation_plot
+
+#figure 5
+ggsave(filename = "coral_szie_relations.png", plot = size_relation_plot, width = 100, height = 150, units = "mm")
+```
+
+
+Does corallivory influence bleaching susceptibility?
+```{r}
+#load the "before_after_2018_2019" sheet
+library(readxl)
+bleaching_coralivory_data_proc_b_submission <- read_excel("C:/Users/nray1/Desktop/bleaching_coralivory_data - proc_b submission.xlsx", 
+    sheet = "before_after_2018_2019")
+View(bleaching_coralivory_data_proc_b_submission)
+
+grazing_mortality = bleaching_coralivory_data_proc_b_submission
+
+#use a lm to compare grazing intensity with % bleaching:
+summary(lm(perc_bleach_2019 ~ bites_2018, data = grazing_mortality))
+plot(grazing_mortality$perc_bleach_2019 ~ grazing_mortality$bites_2018)
+
+#try using a polynomial fit instead
+summary(lm(perc_bleach_2019 ~ log(bites_2018+1), data = grazing_mortality))
+
+graze_bleach = ggplot(data = grazing_mortality, aes(x = bites_2018, y = perc_bleach_2019))+
+  geom_hline(yintercept = 0)+
+  geom_smooth(method = lm, formula = "y ~ log(x+1)", se = TRUE, colour = "black")+
+  geom_point(colour = "#745900")+
+  theme_classic()+
+  theme(axis.text.x =  element_text(size = 10,colour = "black"),
+         axis.text.y =  element_text(size = 10,colour = "black"),
+         axis.title.y = element_text(size = 10, colour = "black"),
+         axis.title.x = element_text(size = 10,colour = "black"))+
+  labs(y = expression(paste("% Bleached in 2019")))+
+  labs(x = expression(paste("Number of Bite Scars in 2018")))+
+  scale_y_continuous(limits = c(0, 100),breaks=c(0, 20, 40, 60, 80, 100))+
+  guides(fill = FALSE)+
+  annotate("text", label = "paste(italic(R)^2, \" = 0.19\")", x = 400, y = 50, size = 3.528, parse = TRUE, hjust = 0)+
+  annotate("text", x = 400, y = 39.09, label = "p < 0.001", size = 3.528, hjust = 0)
+graze_bleach
+
+#figure 6
+ggsave(filename = "bleaching_after_bites.png", plot = graze_bleach, width = 100, height = 100, units = "mm")
+```
+
+
+and compare coral %C and %N - this is Table 2
+```{r}
+#load the sheet labeled "c_n_content"
+library(readxl)
+bleaching_coralivory_data_proc_b_submission <- read_excel("C:/Users/nray1/Desktop/bleaching_coralivory_data - proc_b submission.xlsx", 
+    sheet = "c_n_content")
+View(bleaching_coralivory_data_proc_b_submission)
+
+c_n_content = bleaching_coralivory_data_proc_b_submission
+
+c_n_content = rename(c_n_content, site = `Collection Site`)
+c_n_content = rename(c_n_content, state = `Symbiotic State`)
+c_n_content$site = as.factor(c_n_content$site)
+c_n_content$state = as.factor(c_n_content$state)
+
+perc_c_test = lmer(perc_C ~ state + (1|site), data = c_n_content)
+summary(perc_c_test)
+lsmeans(perc_c_test, pairwise~state)
+
+perc_N_test = lmer(perc_N ~ state + (1|site), data = c_n_content)
+summary(perc_N_test)
+lsmeans(perc_N_test, pairwise~state)
+
+d13c_test = lmer(d13c ~ state + (1|site), data = c_n_content)
+summary(d13c_test)
+lsmeans(d13c_test, pairwise~state)
+
+d15n_test = lmer(d15n ~ state + (1|site), data = c_n_content)
+summary(d15n_test)
+lsmeans(d15n_test, pairwise~state)
+```
+
+
+
+
+
